@@ -1,0 +1,67 @@
+# Configuração do ambiente LOCAL (supabase start). NÃO se aplica ao projeto hospedado:
+# ver docs/SECURITY.md -> "Deployment: passos obrigatórios".
+project_id = "visitbook"
+
+[api]
+enabled = true
+port = 54321
+# Só public é exposto. `app` (funções privilegiadas) e graphql_public ficam de fora.
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[realtime]
+enabled = false
+
+[studio]
+enabled = true
+port = 54323
+
+[local_smtp]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "2MiB"
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:5173"
+additional_redirect_urls = ["http://127.0.0.1:5173", "http://localhost:5173"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+# Sem registo público: consultores via script de admin, clientes via convite.
+enable_signup = false
+enable_anonymous_sign_ins = false
+minimum_password_length = 12
+
+[auth.rate_limit]
+email_sent = 30
+token_verifications = 30
+sign_in_sign_ups = 30
+
+[auth.email]
+enable_signup = false
+double_confirm_changes = true
+enable_confirmations = false
+secure_password_change = true
+max_frequency = "30s"
+otp_length = 6
+otp_expiry = 600
+
+[edge_runtime]
+enabled = true
+
+[analytics]
+enabled = false
