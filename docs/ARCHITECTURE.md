@@ -13,9 +13,10 @@ supabase/
   seed.sql               dados fictícios locais, via app.create_consultant()
   tests/database/        pgTAP (supabase test db)
   functions/             Edge Functions (a partir da etapa 6)
-scripts/admin/           scripts com service_role, executados localmente (etapa 3)
+scripts/admin/           scripts com service_role, executados localmente (Node corre .ts diretamente; sem dependências extra)
 src/                     SPA React (a partir da etapa 3)
-  app/  config/  lib/  i18n/  ui/  types/
+  app/  config/  lib/  i18n/  ui/  types/  test/
+  features/auth/{domain,api,components,routes}   sessão, login por password, definir password
   features/<feature>/{domain,api,components,routes}
 docs/
 ```

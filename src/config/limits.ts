@@ -22,6 +22,7 @@ export const LIMITS = {
     outputMimeType: 'image/webp',
     signedUrlTtlSeconds: 600,
   },
+  auth: { passwordMinLength: 12, otpLength: 6 },
   tour: { minProperties: 2, maxProperties: 5 },
   comparison: { minProperties: 2, maxProperties: 4 },
   ratings: { min: 1, max: 5 },

@@ -20,9 +20,10 @@ export default tseslint.config(
     },
   },
   {
-    files: ['vite.config.ts'],
+    files: ['vite.config.ts', 'scripts/**/*.ts'],
     extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
+      globals: globals.node,
       parserOptions: { project: './tsconfig.node.json', tsconfigRootDir: import.meta.dirname },
     },
   },

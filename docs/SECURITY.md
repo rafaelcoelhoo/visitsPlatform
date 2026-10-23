@@ -42,10 +42,15 @@ Eliminar a conta (`auth.users`) apaga as suas `client_links` (cascade) mas não 
 
 ## Onboarding de consultores
 
-1. O script de admin chama `supabase.auth.admin.inviteUserByEmail(email)`. O consultor define a própria password e o script nunca gera nem guarda passwords.
+`pnpm admin:create-consultant --email ana@exemplo.pt --name "Ana Martins" [--org-name "Imobiliária X"] [--yes]`, com `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` exportadas na shell (nunca em ficheiros). Para um URL que não seja local, o script exige `--yes`.
+
+1. O script chama `supabase.auth.admin.inviteUserByEmail(email)` com `redirectTo` = `{SITE_URL}/definir-password`. O consultor define a própria password nessa página; o script nunca gera nem guarda passwords.
 2. Depois chama `rpc('admin_create_consultant', { p_user_id, p_email, p_display_name })`.
-3. A função é idempotente. Se o passo 2 falhar, repete-se sem duplicar nada. Não reativa membros desativados.
+3. É idempotente: repetir com um convite por aceitar reenvia o email e devolve a mesma organização; com um utilizador já confirmado não envia nada e devolve a mesma organização. Não reativa membros desativados.
 4. Não há trigger em `auth.users`. `raw_user_meta_data` nunca é lido para definir papéis.
+5. O script só imprime ids (`user_id`, `organization_id`); não imprime emails nem chaves.
+
+Verificado de ponta a ponta contra o Supabase local: convite, link do email, password curta rejeitada (mínimo 12), login, leitura via RLS só da própria org e do próprio perfil, `audit_log` negado.
 
 No frontend, `signInWithOtp` é sempre chamado com `shouldCreateUser: false`.
 
@@ -56,7 +61,8 @@ No frontend, `signInWithOtp` é sempre chamado com `shouldCreateUser: false`.
 Para cada projeto hospedado (staging, produção):
 
 1. Criar o projeto numa **região da UE** (`eu-central-1` Frankfurt ou `eu-west-1` Irlanda). Esta decisão não se pode mudar sem migração.
-2. **Desativar o signup:** Dashboard › Authentication › Sign In / Providers › "Allow new users to sign up" = off, e também Email › signup off. Em alternativa: `supabase config push`, revendo o diff.
+2. **Desativar o registo público, mantendo o fornecedor de email ATIVO.** Dashboard › Authentication › Sign In / Providers › "Allow new users to sign up" = **off** (interruptor global), e o fornecedor **Email = enabled**. Atenção: desativar o próprio fornecedor de email (em `config.toml`, `[auth.email] enable_signup = false`) não corta só o registo: corta também o login por password e o OTP (`422 email_provider_disabled`, verificado). Em alternativa: `supabase config push`, revendo o diff.
+   Depois de alterar `config.toml` localmente, `db:reset` não chega: é preciso `pnpm db:stop && pnpm db:start` para o contentor de auth reler a configuração.
 3. **Verificar** que um signup direto falha:
    ```sh
    curl -s -X POST "$SUPABASE_URL/auth/v1/signup" \

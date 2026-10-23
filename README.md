@@ -34,6 +34,16 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 pnpm types:gen               # depois de alterar migrações
 ```
 
+### Criar um consultor (local)
+
+```sh
+export SUPABASE_URL=http://127.0.0.1:54321
+export SUPABASE_SERVICE_ROLE_KEY=$(pnpm supabase status -o env | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2- | tr -d '"')
+pnpm admin:create-consultant --email ana@exemplo.pt --name "Ana Martins"
+```
+
+O convite aparece no Mailpit (`http://127.0.0.1:54324`); o link abre `/definir-password`. Os consultores do seed (`ana.consultora@example.com`, `joao.consultor@example.com`) entram com a password de desenvolvimento em `/entrar`.
+
 O deployment é no Netlify (`netlify.toml`); ver `docs/SECURITY.md` › "Frontend no Netlify".
 
 ## Variáveis de ambiente
