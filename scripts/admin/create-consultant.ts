@@ -1,5 +1,5 @@
 // Cria um consultor: convite por email (o consultor define a própria password) + organização.
-// Uso: pnpm admin:create-consultant --email ana@exemplo.pt --name "Ana Martins" [--org-name "Imobiliária X"] [--yes]
+// Uso: pnpm admin:create-consultant -- --email ana@exemplo.pt --name "Ana Martins" [--org-name "Imobiliária X"] [--yes]
 // Variáveis (exportar na shell; nunca em ficheiros do repositório):
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SITE_URL (opcional; base do link do convite)
 import { parseArgs } from 'node:util'
@@ -13,7 +13,11 @@ function fail(message: string): never {
   process.exit(1)
 }
 
+const args = process.argv.slice(2)
+if (args[0] === '--') args.shift()
+
 const { values } = parseArgs({
+  args,
   options: {
     email: { type: 'string' },
     name: { type: 'string' },

@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "admin:create-consultant": "node scripts/admin/create-consultant.ts",
+    "test:integration": "node --test \"scripts/integration/*.test.ts\"",
     "types:gen": "supabase gen types typescript --local --schema public > src/types/database.ts",
     "db:start": "supabase start",
     "db:stop": "supabase stop",

@@ -16,7 +16,7 @@
 
 - **Um consultor = uma organização.** Garantido por um índice único em `organization_members(user_id)`, que é também a chave de idempotência de `app.create_consultant`. Remover na Fase 3, quando houver equipas.
 
-## Matriz de acesso (etapas 1 e 2)
+## Matriz de acesso (etapas 1 a 4a)
 
 Uma conta pode ser consultor numa org e comprador noutra. As políticas permissivas somam-se (OR); o frontend filtra sempre por `organization_id` da org ativa.
 
@@ -27,6 +27,9 @@ Uma conta pode ser consultor numa org e comprador noutra. As políticas permissi
 | `user_profiles` | — | só o próprio. Nem o consultor lê o perfil do seu cliente | UPDATE de `display_name`, `avatar_url`, `locale` do próprio | total |
 | `audit_log` | — | — | — (append-only via funções definer) | total |
 | `clients` | — | membros ativos: os da sua org. Comprador: só o seu registo (ligação ativa) | membros ativos: INSERT (`organization_id`, `name`, `email`, `phone`), UPDATE (`name`, `email`, `phone`, `archived_at`), DELETE, na sua org. `organization_id` é imutável | total |
+| `properties` | — | membros ativos: os da sua org. O comprador **não** lê imóveis (acesso virá com os roteiros) | membros ativos: INSERT (`organization_id`, `title`, `price_eur`, `location_text`, `typology`, `area_m2`, `monthly_charges_eur`), UPDATE (os mesmos, sem `organization_id`, mais `archived_at`). Sem DELETE: arquivar | total |
+| `property_images` | — | membros ativos: as da sua org | membros ativos: INSERT (`property_id`, `organization_id`, `slot`; sempre `pending`), UPDATE só de `status` `pending -> ready`. Sem DELETE: só a Edge Function (service_role) | total |
+| `storage.objects` (bucket `property-images`) | sem acesso | membros ativos: objetos que correspondam a uma reserva da sua org | INSERT só do caminho de uma reserva `pending` da sua org. Sem UPDATE/DELETE | total |
 | `client_links` | — | membros ativos: as da sua org. Comprador: as suas (ativas) | só o comprador, UPDATE de `last_seen_at` nas suas. Convite, aceitação e revogação: Edge Function (service_role) | total |
 
 Exposição conhecida e aceite: o comprador, ao ler `organizations` e `organization_members` da org onde está ligado, vê também `created_by`, `user_id`, `role` e `created_at` do consultor (UUIDs e metadados, sem email). Restringir por coluna obrigaria `select` explícito em todas as queries da app; revisitar na Fase 3, quando houver equipas.
@@ -37,8 +40,28 @@ Eliminar a conta (`auth.users`) apaga as suas `client_links` (cascade) mas não 
 |---|---|
 | `app.user_org_ids()` | authenticated (usada nas políticas) |
 | `app.user_client_ids()`, `app.user_client_org_ids()` | authenticated (usadas nas políticas; só ligações `active`) |
+| `public.reserve_property_image(property_id)` (INVOKER) | authenticated; o RLS do chamador aplica-se |
+| `app.property_images_confirm_guard()` (trigger) | ninguém executa diretamente |
 | `app.create_consultant()` | service_role (e o owner, no seed) |
 | `public.admin_create_consultant()` (INVOKER) | service_role |
+
+## Fotografias
+
+Padrão **reservar -> carregar -> confirmar -> reconciliar**:
+
+1. **Reservar:** `rpc('reserve_property_image', { p_property_id })` insere em `property_images` o primeiro slot livre (`pending`) e devolve a linha com o `storage_path`, que é gerado pelo servidor (`{org}/{imóvel}/{id}.webp`) e não é definível pelo cliente.
+2. **Carregar:** `storage.upload(storage_path)`. A política só aceita caminhos de reservas `pending` da própria org, o bucket é privado, aceita só `image/webp` e até 1 MiB.
+3. **Confirmar:** `update status = 'ready'`. O trigger só deixa se o objeto existe no bucket com `mimetype = image/webp`.
+4. **Reconciliar:** job de limpeza (pg_cron + Edge Function), **ainda por implementar (etapa 4b)**.
+
+O limite de 8 fotos é do Postgres: `check (slot between 1 and 8)` e `unique (property_id, slot)`. `reserve_property_image` tenta cada slot numa subtransação e, sob concorrência, quem perde recebe `unique_violation` e tenta o seguinte; sem slot livre devolve `photo_limit_reached`. Provado com ligações paralelas reais (`pnpm test:integration`): 12 reservas simultâneas dão exatamente os slots 1..8 e 4 recusas, em 5 rondas.
+
+Lacunas conhecidas até à etapa 4b:
+- O `mimetype` verificado ao confirmar é o **declarado** no upload (forjável). A validação por **magic bytes** vai para a Edge Function.
+- Não há apagar fotos (nem imóveis) pela aplicação: sem DELETE direto, por desenho. A Edge Function valida a permissão, apaga a linha e o ficheiro.
+- Ficheiros órfãos (reserva `pending` sem upload, upload sem confirmação) ficam até existir o job de limpeza.
+- Signed URLs: TTL de `LIMITS.photos.signedUrlTtlSeconds` (10 min). Quem os partilhar dá acesso até expirarem.
+- O comprador ainda não lê imóveis nem fotos; o acesso vem com os roteiros (etapa 7), com testes de isolamento entre compradores.
 
 ## Onboarding de consultores
 

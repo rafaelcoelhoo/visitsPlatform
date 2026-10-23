@@ -27,4 +27,8 @@ export default tseslint.config(
       parserOptions: { project: './tsconfig.node.json', tsconfigRootDir: import.meta.dirname },
     },
   },
+  {
+    files: ['scripts/integration/**/*.ts'],
+    rules: { '@typescript-eslint/no-floating-promises': 'off' },
+  },
 )

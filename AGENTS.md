@@ -8,6 +8,7 @@
 - `pnpm db:start` / `pnpm db:stop`
 - `pnpm db:reset`: aplica as migrações e o seed na base local
 - `pnpm db:test`: pgTAP; tem de passar antes de qualquer commit que toque em `supabase/`
+- `pnpm test:integration`: concorrência e Storage por HTTP (precisa de `pnpm db:start`; só contra o Supabase local)
 - `pnpm db:lint`
 
 ## Regras

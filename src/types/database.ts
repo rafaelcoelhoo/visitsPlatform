@@ -99,6 +99,46 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"properties": {
+                  Row: {
+                    "archived_at": string | null,"area_m2": number | null,"created_at": string,"created_by": string | null,"id": string,"location_text": string | null,"monthly_charges_eur": number | null,"organization_id": string,"price_eur": number | null,"title": string,"typology": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "archived_at"?: string | null,"area_m2"?: number | null,"created_at"?: string,"created_by"?: string | null,"id"?: string,"location_text"?: string | null,"monthly_charges_eur"?: number | null,"organization_id": string,"price_eur"?: number | null,"title": string,"typology"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "archived_at"?: string | null,"area_m2"?: number | null,"created_at"?: string,"created_by"?: string | null,"id"?: string,"location_text"?: string | null,"monthly_charges_eur"?: number | null,"organization_id"?: string,"price_eur"?: number | null,"title"?: string,"typology"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "properties_organization_id_fkey"
+      columns: ["organization_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"property_images": {
+                  Row: {
+                    "created_at": string,"id": string,"organization_id": string,"property_id": string,"slot": number,"status": string,"storage_path": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"organization_id": string,"property_id": string,"slot": number,"status"?: string,"storage_path"?: never
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"organization_id"?: string,"property_id"?: string,"slot"?: number,"status"?: string,"storage_path"?: never
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "property_images_property_id_organization_id_fkey"
+      columns: ["property_id","organization_id"]
+isOneToOne: false
+      referencedRelation: "properties"
+      referencedColumns: ["id","organization_id"]
+    }
+                  ]
                 },"user_profiles": {
                   Row: {
                     "avatar_url": string | null,"created_at": string,"display_name": string | null,"locale": string,"updated_at": string,"user_id": string
@@ -121,7 +161,23 @@ isOneToOne: false
           Functions: {
             "admin_create_consultant":
 { Args: { "p_display_name": string,"p_email": string,"p_org_display_name"?: string,"p_user_id": string }; Returns: string
-                           }
+                           },
+"reserve_property_image":
+{ Args: { "p_property_id": string }; Returns: {
+              "created_at": string,
+"id": string,
+"organization_id": string,
+"property_id": string,
+"slot": number,
+"status": string,
+"storage_path": string | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "property_images"
+        isOneToOne: true
+        isSetofReturn: false
+      } }
           }
           Enums: {
             [_ in never]: never

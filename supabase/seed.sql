@@ -78,3 +78,13 @@ insert into public.client_links (client_id, organization_id, status)
 select c.id, c.organization_id, 'invited'
 from public.clients c
 where c.email = 'pedro.convidado@example.com';
+
+-- Imóveis fictícios (sem fotos). Ana: um completo e um criado "em 90 segundos" (só alguns campos, o resto NULL).
+insert into public.properties (organization_id, created_by, title, price_eur, location_text, typology, area_m2, monthly_charges_eur)
+select m.organization_id, m.user_id, v.title, v.price_eur, v.location_text, v.typology, v.area_m2, v.monthly_charges_eur
+from public.organization_members m
+join (values
+  ('11111111-1111-4111-8111-111111111111'::uuid, 'T3 com varanda em Alvalade', 395000::numeric, 'Alvalade, Lisboa', 'T3', 112::numeric, 85::numeric),
+  ('11111111-1111-4111-8111-111111111111'::uuid, 'T2 para remodelar na Graça', 280000::numeric, 'Graça, Lisboa', 'T2', null::numeric, null::numeric),
+  ('22222222-2222-4222-8222-222222222222'::uuid, 'Moradia T4 com jardim em Cascais', 890000::numeric, 'Birre, Cascais', 'T4', 240::numeric, 0::numeric)
+) as v(user_id, title, price_eur, location_text, typology, area_m2, monthly_charges_eur) on v.user_id = m.user_id;
