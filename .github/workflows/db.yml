@@ -33,3 +33,8 @@ jobs:
 
       - name: Lint
         run: pnpm db:lint
+
+      - name: Types in sync with the schema
+        run: |
+          pnpm types:gen
+          git diff --exit-code -- src/types/database.ts

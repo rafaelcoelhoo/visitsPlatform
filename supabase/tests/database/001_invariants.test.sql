@@ -1,6 +1,6 @@
 -- Invariantes de esquema. Valem para TODAS as tabelas/funções, presentes e futuras.
 begin;
-select plan(10);
+select plan(11);
 
 select is_empty($$
   select c.relname::text
@@ -54,6 +54,16 @@ select is_empty($$
   where n.nspname = 'public' and c.relkind = 'v'
     and not coalesce(c.reloptions, '{}') @> array['security_invoker=true']
 $$, 'todas as views de public são security_invoker');
+
+-- WITH CHECK em toda a política de escrita (ALL/INSERT/UPDATE). Em ALL com USING, o Postgres aplica
+-- o USING à linha nova também, por isso o WITH CHECK não é observável por comportamento: testa-se aqui.
+-- Rejeita ausência e 'true' literal.
+select is_empty($$
+  select tablename::text || '.' || policyname::text
+  from pg_policies
+  where schemaname = 'public' and cmd in ('ALL', 'INSERT', 'UPDATE')
+    and (with_check is null or lower(with_check) = 'true')
+$$, 'toda a política de escrita em public tem WITH CHECK não trivial');
 
 select ok(has_function_privilege('authenticated', 'app.user_org_ids()', 'execute'),
           'authenticated pode executar app.user_org_ids()');

@@ -16,18 +16,27 @@
 
 - **Um consultor = uma organização.** Garantido por um índice único em `organization_members(user_id)`, que é também a chave de idempotência de `app.create_consultant`. Remover na Fase 3, quando houver equipas.
 
-## Matriz de acesso (etapa 1)
+## Matriz de acesso (etapas 1 e 2)
+
+Uma conta pode ser consultor numa org e comprador noutra. As políticas permissivas somam-se (OR); o frontend filtra sempre por `organization_id` da org ativa.
 
 | Tabela | anon | authenticated: leitura | authenticated: escrita | service_role |
 |---|---|---|---|---|
-| `organizations` | — | orgs onde é membro **ativo** | — | total |
-| `organization_members` | — | só a própria linha (incluindo se estiver inativo) | — | total |
-| `user_profiles` | — | só o próprio | UPDATE de `display_name`, `avatar_url`, `locale` do próprio | total |
+| `organizations` | — | orgs onde é membro **ativo**; orgs onde tem ligação de cliente **ativa** | — | total |
+| `organization_members` | — | a própria linha (incluindo inativa); membros **ativos** das orgs onde tem ligação de cliente ativa | — | total |
+| `user_profiles` | — | só o próprio. Nem o consultor lê o perfil do seu cliente | UPDATE de `display_name`, `avatar_url`, `locale` do próprio | total |
 | `audit_log` | — | — | — (append-only via funções definer) | total |
+| `clients` | — | membros ativos: os da sua org. Comprador: só o seu registo (ligação ativa) | membros ativos: INSERT (`organization_id`, `name`, `email`, `phone`), UPDATE (`name`, `email`, `phone`, `archived_at`), DELETE, na sua org. `organization_id` é imutável | total |
+| `client_links` | — | membros ativos: as da sua org. Comprador: as suas (ativas) | só o comprador, UPDATE de `last_seen_at` nas suas. Convite, aceitação e revogação: Edge Function (service_role) | total |
+
+Exposição conhecida e aceite: o comprador, ao ler `organizations` e `organization_members` da org onde está ligado, vê também `created_by`, `user_id`, `role` e `created_at` do consultor (UUIDs e metadados, sem email). Restringir por coluna obrigaria `select` explícito em todas as queries da app; revisitar na Fase 3, quando houver equipas.
+
+Eliminar a conta (`auth.users`) apaga as suas `client_links` (cascade) mas não o registo `clients`, que é dado da organização. O apagamento do cliente na org e dos dados que ele gerou entra na etapa de RGPD.
 
 | Função | Quem executa |
 |---|---|
 | `app.user_org_ids()` | authenticated (usada nas políticas) |
+| `app.user_client_ids()`, `app.user_client_org_ids()` | authenticated (usadas nas políticas; só ligações `active`) |
 | `app.create_consultant()` | service_role (e o owner, no seed) |
 | `public.admin_create_consultant()` (INVOKER) | service_role |
 
@@ -51,7 +60,7 @@ Para cada projeto hospedado (staging, produção):
 3. **Verificar** que um signup direto falha:
    ```sh
    curl -s -X POST "$SUPABASE_URL/auth/v1/signup" \
-     -H "apikey: $SUPABASE_ANON_KEY" -H "Content-Type: application/json" \
+     -H "apikey: $SUPABASE_PUBLISHABLE_KEY" -H "Content-Type: application/json" \
      -d '{"email":"probe@example.com","password":"probe-password-123"}'
    # esperado: erro "Signups not allowed for this instance"
    ```
@@ -59,7 +68,23 @@ Para cada projeto hospedado (staging, produção):
 5. Definir OTP com 6 dígitos e expiração de 10 minutos, e um template de email que mostre `{{ .Token }}` e não o link.
 6. `supabase db push` e depois correr os testes contra a base local equivalente. **Nunca correr o seed em produção.**
 
+### Frontend no Netlify
+
+1. Ligar o repositório. O build usa `netlify.toml` (`pnpm build`, `dist`, Node 22).
+2. Variáveis de ambiente, por contexto: **Production** aponta para o projeto Supabase de produção; **Deploy previews** e **Branch deploys** apontam para um projeto de **staging**, nunca para produção. Só `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`. A `service_role` não é variável do Netlify.
+3. `SECRETS_SCAN_OMIT_KEYS` já está em `netlify.toml` para essas duas chaves públicas. Não alargar a lista a mais nada.
+4. Supabase › Authentication › URL Configuration: *Site URL* = URL de produção; *Redirect URLs* = esse URL. No projeto de **staging**, acrescentar `https://deploy-preview-*--<site>.netlify.app/**`. Nunca wildcards no projeto de produção.
+5. Verificar num deploy preview, antes de ir para produção:
+   ```sh
+   curl -sI https://<deploy>/ | grep -iE 'content-security-policy|x-content-type|referrer|permissions'
+   curl -sI https://<deploy>/assets/<ficheiro>.js | grep -i cache-control   # immutable
+   curl -sI https://<deploy>/index.html | grep -i cache-control             # no-cache
+   curl -s -o /dev/null -w '%{http_code}\n' https://<deploy>/uma/rota/qualquer  # 200 (SPA)
+   ```
+6. A CSP usa `https://*.supabase.co` em `connect-src` e `img-src`. Depois de criar o projeto, restringir ao URL exato `https://<ref>.supabase.co`.
+7. `browser-image-compression` carrega por omissão o script do worker a partir de uma CDN (jsdelivr). Isso violaria a CSP e acrescentaria um terceiro. Resolver na etapa das fotos (`libURL` local ou `useWebWorker: false`); **não** abrir a CSP à CDN.
+
 ## Riscos conhecidos e mitigação
 
-- **Enumeração de emails via OTP** (`shouldCreateUser: false` devolve erro para emails desconhecidos). A UI mostra sempre a mesma mensagem.
+- **Enumeração de emails via OTP.** Verificado na base local: `POST /auth/v1/otp` com `create_user: false` devolve `422 otp_disabled` para emails desconhecidos e `200` para conhecidos. A UI tem de mostrar sempre a mesma mensagem ("Se o email estiver registado, enviámos um código"), mesmo quando o pedido falha com 422.
 - **`inviteUserByEmail` envia um link e não um código.** É aceitável para consultores em desktop. Nos clientes usa-se OTP.

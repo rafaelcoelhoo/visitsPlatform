@@ -23,9 +23,22 @@ Utilizadores de desenvolvimento (fictícios, só local), password `visitbook-dev
 - `ana.consultora@example.com`
 - `joao.consultor@example.com`
 
+Comprador de desenvolvimento: `marta.compradora@example.com` (cliente das duas consultoras). Entra por OTP; o código aparece no Mailpit (`http://127.0.0.1:54324`).
+
+## Frontend
+
+```sh
+cp .env.example .env.local   # preencher VITE_SUPABASE_PUBLISHABLE_KEY (pnpm supabase status)
+pnpm dev                     # http://127.0.0.1:5173
+pnpm typecheck && pnpm lint && pnpm test && pnpm build
+pnpm types:gen               # depois de alterar migrações
+```
+
+O deployment é no Netlify (`netlify.toml`); ver `docs/SECURITY.md` › "Frontend no Netlify".
+
 ## Variáveis de ambiente
 
-Ver `.env.example`. A `service_role` key nunca entra no repositório.
+Ver `.env.example`. A `service_role` key nunca entra no repositório nem no frontend.
 
 ## Documentação
 

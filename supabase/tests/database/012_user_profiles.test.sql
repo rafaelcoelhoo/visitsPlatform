@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(10);
 
 -- P1 e P2 na MESMA org (P2 inserido diretamente, como acontecerá com equipas na Fase 3).
 select tests.create_auth_user('a2000000-0000-0000-0000-000000000001', 'p1@example.com');
@@ -20,9 +20,16 @@ select is_empty($$
   select 1 from public.user_profiles where user_id = 'b2000000-0000-0000-0000-000000000002'
 $$, 'membros da mesma org não leem o perfil um do outro');
 
--- UPDATE com user_id alheio: o RLS filtra, 0 linhas afetadas (verificado abaixo como postgres).
-update public.user_profiles set display_name = 'Pirata'
-where user_id = 'b2000000-0000-0000-0000-000000000002';
+-- UPDATE ao perfil alheio: USING filtra (0 linhas) ou WITH CHECK rejeita (42501). Ambos são aceites;
+-- o que interessa é que o perfil de P2 não muda (verificado no fim).
+do $$
+begin
+  update public.user_profiles set display_name = 'Pirata'
+  where user_id = 'b2000000-0000-0000-0000-000000000002';
+exception when insufficient_privilege then
+  null;
+end
+$$;
 
 select throws_ok($$
   update public.user_profiles set user_id = 'b2000000-0000-0000-0000-000000000002'
@@ -40,6 +47,17 @@ select lives_ok($$
   where user_id = 'a2000000-0000-0000-0000-000000000001'
 $$, 'utilizador edita o próprio perfil');
 reset role;
+
+-- WITH CHECK isolado: re-concede o grant de user_id (só dentro desta transação, revertido no rollback)
+-- para que a única barreira contra reatribuir o perfil a outra pessoa seja a política.
+grant update (user_id) on public.user_profiles to authenticated;
+select tests.authenticate_as('a2000000-0000-0000-0000-000000000001');
+select throws_ok($$
+  update public.user_profiles set user_id = 'b2000000-0000-0000-0000-000000000002'
+  where user_id = 'a2000000-0000-0000-0000-000000000001'
+$$, '42501', null, 'não reatribui o perfil a outra pessoa, mesmo com grant de user_id (USING + WITH CHECK)');
+reset role;
+revoke update (user_id) on public.user_profiles from authenticated;
 
 select results_eq($$
   select display_name from public.user_profiles where user_id = 'b2000000-0000-0000-0000-000000000002'
