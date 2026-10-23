@@ -88,3 +88,8 @@ join (values
   ('11111111-1111-4111-8111-111111111111'::uuid, 'T2 para remodelar na Graça', 280000::numeric, 'Graça, Lisboa', 'T2', null::numeric, null::numeric),
   ('22222222-2222-4222-8222-222222222222'::uuid, 'Moradia T4 com jardim em Cascais', 890000::numeric, 'Birre, Cascais', 'T4', 240::numeric, 0::numeric)
 ) as v(user_id, title, price_eur, location_text, typology, area_m2, monthly_charges_eur) on v.user_id = m.user_id;
+
+-- Segredos do Vault SÓ para desenvolvimento local (o job de reconciliação lê-os; ver docs/SECURITY.md para produção).
+-- O host é o contentor do Kong na rede Docker do Supabase local.
+select vault.create_secret('http://supabase_kong_visitbook:8000/functions/v1', 'functions_base_url', 'URL base das Edge Functions (local)');
+select vault.create_secret('local-dev-only-reconcile-secret', 'reconcile_secret', 'Segredo do job de reconciliação (local; igual a RECONCILE_SECRET em supabase/functions/dev.env)');

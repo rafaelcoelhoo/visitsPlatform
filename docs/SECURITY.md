@@ -16,7 +16,7 @@
 
 - **Um consultor = uma organização.** Garantido por um índice único em `organization_members(user_id)`, que é também a chave de idempotência de `app.create_consultant`. Remover na Fase 3, quando houver equipas.
 
-## Matriz de acesso (etapas 1 a 4a)
+## Matriz de acesso (etapas 1 a 4b)
 
 Uma conta pode ser consultor numa org e comprador noutra. As políticas permissivas somam-se (OR); o frontend filtra sempre por `organization_id` da org ativa.
 
@@ -28,7 +28,7 @@ Uma conta pode ser consultor numa org e comprador noutra. As políticas permissi
 | `audit_log` | — | — | — (append-only via funções definer) | total |
 | `clients` | — | membros ativos: os da sua org. Comprador: só o seu registo (ligação ativa) | membros ativos: INSERT (`organization_id`, `name`, `email`, `phone`), UPDATE (`name`, `email`, `phone`, `archived_at`), DELETE, na sua org. `organization_id` é imutável | total |
 | `properties` | — | membros ativos: os da sua org. O comprador **não** lê imóveis (acesso virá com os roteiros) | membros ativos: INSERT (`organization_id`, `title`, `price_eur`, `location_text`, `typology`, `area_m2`, `monthly_charges_eur`), UPDATE (os mesmos, sem `organization_id`, mais `archived_at`). Sem DELETE: arquivar | total |
-| `property_images` | — | membros ativos: as da sua org | membros ativos: INSERT (`property_id`, `organization_id`, `slot`; sempre `pending`), UPDATE só de `status` `pending -> ready`. Sem DELETE: só a Edge Function (service_role) | total |
+| `property_images` | — | membros ativos: as da sua org | membros ativos: INSERT (`property_id`, `organization_id`, `slot`; sempre `pending`). **Sem UPDATE e sem DELETE**: confirmar e apagar só pelas Edge Functions (service_role) | total |
 | `storage.objects` (bucket `property-images`) | sem acesso | membros ativos: objetos que correspondam a uma reserva da sua org | INSERT só do caminho de uma reserva `pending` da sua org. Sem UPDATE/DELETE | total |
 | `client_links` | — | membros ativos: as da sua org. Comprador: as suas (ativas) | só o comprador, UPDATE de `last_seen_at` nas suas. Convite, aceitação e revogação: Edge Function (service_role) | total |
 
@@ -42,6 +42,8 @@ Eliminar a conta (`auth.users`) apaga as suas `client_links` (cascade) mas não 
 | `app.user_client_ids()`, `app.user_client_org_ids()` | authenticated (usadas nas políticas; só ligações `active`) |
 | `public.reserve_property_image(property_id)` (INVOKER) | authenticated; o RLS do chamador aplica-se |
 | `app.property_images_confirm_guard()` (trigger) | ninguém executa diretamente |
+| `public.admin_expire_pending_images()`, `public.admin_orphan_property_objects()` (INVOKER) e `app.orphan_property_objects()` | service_role (job de reconciliação) |
+| `app.invoke_reconcile_property_images()` | pg_cron (owner); lê os segredos do Vault |
 | `app.create_consultant()` | service_role (e o owner, no seed) |
 | `public.admin_create_consultant()` (INVOKER) | service_role |
 
@@ -49,19 +51,37 @@ Eliminar a conta (`auth.users`) apaga as suas `client_links` (cascade) mas não 
 
 Padrão **reservar -> carregar -> confirmar -> reconciliar**:
 
-1. **Reservar:** `rpc('reserve_property_image', { p_property_id })` insere em `property_images` o primeiro slot livre (`pending`) e devolve a linha com o `storage_path`, que é gerado pelo servidor (`{org}/{imóvel}/{id}.webp`) e não é definível pelo cliente.
-2. **Carregar:** `storage.upload(storage_path)`. A política só aceita caminhos de reservas `pending` da própria org, o bucket é privado, aceita só `image/webp` e até 1 MiB.
-3. **Confirmar:** `update status = 'ready'`. O trigger só deixa se o objeto existe no bucket com `mimetype = image/webp`.
-4. **Reconciliar:** job de limpeza (pg_cron + Edge Function), **ainda por implementar (etapa 4b)**.
+1. **Reservar:** `rpc('reserve_property_image', { p_property_id })` insere em `property_images` o primeiro slot livre (`pending`) e devolve a linha com o `storage_path`, gerado pelo servidor (`{org}/{imóvel}/{id}.webp`, não definível pelo cliente).
+2. **Carregar:** `storage.upload(storage_path)`. A política só aceita caminhos de reservas `pending` da própria org; o bucket é privado, aceita só `image/webp` (declarado) e até 1 MiB.
+3. **Confirmar:** `POST /functions/v1/confirm-property-image { image_id }`. A função autentica o utilizador, procura a foto **com o JWT dele** (o RLS decide; fora da sua org é 404), descarrega o ficheiro e valida os **magic bytes** (RIFF/WEBP bem formado, sem dados anexados), o tamanho (1 MiB) e as dimensões (lado maior até 1600 px). Se for inválido, **apaga o ficheiro** e devolve 422, e a reserva fica `pending` para novo upload. Só então marca `ready`, com `service_role`. O cliente da API **não tem** UPDATE em `property_images`; o trigger ainda confirma que o objeto existe como `image/webp` e que `ready` nunca regride.
+4. **Apagar:** `POST /functions/v1/delete-property-image { image_id }`: mesma verificação de permissão; apaga a **linha primeiro** (liberta o slot) e depois o ficheiro. Se o Storage falhar, o ficheiro fica órfão (nunca uma linha a apontar para um ficheiro inexistente) e a reconciliação limpa-o.
+5. **Reconciliar:** `pg_cron` (de 15 em 15 min) -> `pg_net` -> `reconcile-property-images`. Autentica-se com um **segredo dedicado** (`x-reconcile-secret`), não com a `service_role`. Apaga reservas `pending` com mais de 1 h (e os seus ficheiros) e objetos do bucket sem linha correspondente com mais de 1 h. Nunca apaga fotos `ready`. Idempotente.
 
 O limite de 8 fotos é do Postgres: `check (slot between 1 and 8)` e `unique (property_id, slot)`. `reserve_property_image` tenta cada slot numa subtransação e, sob concorrência, quem perde recebe `unique_violation` e tenta o seguinte; sem slot livre devolve `photo_limit_reached`. Provado com ligações paralelas reais (`pnpm test:integration`): 12 reservas simultâneas dão exatamente os slots 1..8 e 4 recusas, em 5 rondas.
 
-Lacunas conhecidas até à etapa 4b:
-- O `mimetype` verificado ao confirmar é o **declarado** no upload (forjável). A validação por **magic bytes** vai para a Edge Function.
-- Não há apagar fotos (nem imóveis) pela aplicação: sem DELETE direto, por desenho. A Edge Function valida a permissão, apaga a linha e o ficheiro.
-- Ficheiros órfãos (reserva `pending` sem upload, upload sem confirmação) ficam até existir o job de limpeza.
+As funções validam o JWT no código (`auth.getUser`) e têm `verify_jwt = false` em `config.toml`, o que funciona com chaves de assinatura simétricas e assimétricas. CORS só para as origens de `ALLOWED_ORIGINS` (nunca `*`). Os logs só têm função, estado, contagens e `imageId`: nunca emails, nomes nem corpos de pedidos.
+
+### Deployment das funções e do job
+
+1. `supabase functions deploy confirm-property-image delete-property-image reconcile-property-images --no-verify-jwt`.
+2. `supabase secrets set RECONCILE_SECRET=$(openssl rand -hex 32) ALLOWED_ORIGINS=https://<site>.netlify.app` (sem espaços; várias origens separadas por vírgulas).
+3. No SQL Editor do projeto (uma vez), com o **mesmo** valor de `RECONCILE_SECRET`:
+   ```sql
+   select vault.create_secret('https://<ref>.supabase.co/functions/v1', 'functions_base_url');
+   select vault.create_secret('<o mesmo RECONCILE_SECRET>', 'reconcile_secret');
+   ```
+   Sem estes segredos o job emite um aviso e não faz nada (não falha).
+4. Verificar: `select * from cron.job;` mostra `reconcile-property-images`; passados 15 minutos, `select status_code, content from net._http_response order by id desc limit 3;` mostra `200`.
+5. A função de reconciliação **não** deve ser chamável com JWT de utilizador (testado: devolve 401).
+
+Provado localmente, ponta a ponta: o `pg_cron` disparou o job sozinho, o `pg_net` chamou a função com o segredo do Vault, e uma reserva antiga com ficheiro foi apagada (linha e objeto).
+
+Lacunas conhecidas:
+- **Fora do `tsc`:** os ficheiros Deno (`supabase/functions/*/index.ts` e `_deno/`) não são verificados por tipos nem por lint; a lógica está em `_shared/` (tipada, com 40 testes unitários) e os `index.ts` são só ligação ao Supabase, cobertos pelos testes de integração contra o runtime real.
 - Signed URLs: TTL de `LIMITS.photos.signedUrlTtlSeconds` (10 min). Quem os partilhar dá acesso até expirarem.
+- O pedido de confirmação descarrega o ficheiro inteiro (máx. 1 MiB) para a função; aceitável à escala do MVP.
 - O comprador ainda não lê imóveis nem fotos; o acesso vem com os roteiros (etapa 7), com testes de isolamento entre compradores.
+- Apagar um **imóvel** não está exposto: apaga em cascata as linhas das fotos, e os ficheiros ficam para a reconciliação (1 h).
 
 ## Onboarding de consultores
 

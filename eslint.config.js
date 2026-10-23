@@ -5,7 +5,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'supabase', 'node_modules', 'src/types/database.ts'] },
+  { ignores: ['dist', 'coverage', 'supabase/migrations', 'supabase/tests', 'supabase/.temp', 'node_modules', 'src/types/database.ts'] },
   js.configs.recommended,
   {
     files: ['src/**/*.{ts,tsx}'],
@@ -20,7 +20,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['vite.config.ts', 'scripts/**/*.ts'],
+    files: ['vite.config.ts', 'scripts/**/*.ts', 'supabase/functions/_shared/**/*.ts'],
     extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       globals: globals.node,
@@ -30,5 +30,9 @@ export default tseslint.config(
   {
     files: ['scripts/integration/**/*.ts'],
     rules: { '@typescript-eslint/no-floating-promises': 'off' },
+  },
+  {
+    files: ['**/*.test.{ts,tsx}'],
+    rules: { '@typescript-eslint/unbound-method': 'off' },
   },
 )

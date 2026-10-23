@@ -23,7 +23,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Start Supabase
-        run: pnpm db:start -x studio,imgproxy,logflare,vector,supavisor,edge-runtime,realtime
+        run: pnpm db:start -x studio,imgproxy,logflare,vector,supavisor,realtime
 
       - name: Reset database (migrations + seed)
         run: pnpm db:reset
@@ -34,7 +34,18 @@ jobs:
       - name: Lint
         run: pnpm db:lint
 
-      - name: Integration tests (concurrency and Storage over HTTP)
+      - name: Serve Edge Functions
+        run: |
+          pnpm functions:serve > functions.log 2>&1 &
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:54321/functions/v1/confirm-property-image || true)
+            [ "$code" = "401" ] && exit 0
+            sleep 2
+          done
+          cat functions.log
+          exit 1
+
+      - name: Integration tests (concurrency, Storage and Edge Functions over HTTP)
         run: pnpm test:integration
 
       - name: Types in sync with the schema

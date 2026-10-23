@@ -15,7 +15,8 @@ pnpm install
 pnpm db:start     # arranca os containers (migrações + seed)
 pnpm db:reset     # recria a base: migrações + seed
 pnpm db:test      # testes pgTAP (RLS, invariantes)
-pnpm test:integration   # concorrência de slots e Storage, por HTTP
+pnpm functions:serve    # Edge Functions locais (noutro terminal; necessário para test:integration)
+pnpm test:integration   # concorrência de slots, Storage e Edge Functions, por HTTP
 pnpm db:lint
 pnpm db:stop
 ```

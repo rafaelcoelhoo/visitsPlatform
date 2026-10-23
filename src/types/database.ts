@@ -162,6 +162,16 @@ isOneToOne: false
             "admin_create_consultant":
 { Args: { "p_display_name": string,"p_email": string,"p_org_display_name"?: string,"p_user_id": string }; Returns: string
                            },
+"admin_expire_pending_images":
+{ Args: { "p_older_than"?: string }; Returns: {
+              "storage_path": string
+            }[]
+                           },
+"admin_orphan_property_objects":
+{ Args: { "p_older_than"?: string }; Returns: {
+              "name": string
+            }[]
+                           },
 "reserve_property_image":
 { Args: { "p_property_id": string }; Returns: {
               "created_at": string,

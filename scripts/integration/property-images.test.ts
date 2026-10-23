@@ -2,6 +2,7 @@
 // O pgTAP corre numa só ligação e não consegue provar concorrência nem o comportamento do Storage.
 // Pré-requisitos: pnpm db:start (seed com Ana e João). Corre com: pnpm test:integration
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { after, before, describe, it } from 'node:test'
 import { createClient } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -12,8 +13,8 @@ type Client = SupabaseClient<Database>
 
 const BUCKET = 'property-images'
 const DEV_PASSWORD = 'visitbook-dev-1234'
-// WebP 1x1 válido (RIFF....WEBP)
-const WEBP = Buffer.from('UklGRhoAAABXRUJQVlA4TA4AAAAvAAAAAAfQ//73v/+BiOh/AAA=', 'base64')
+const fixture = (name: string): Buffer => readFileSync(new URL(`../../supabase/functions/_shared/fixtures/${name}`, import.meta.url))
+const WEBP = fixture('lossy-1x1.webp')
 
 const env = loadEnv()
 const options = { auth: { persistSession: false, autoRefreshToken: false } }
@@ -141,16 +142,14 @@ describe('Storage: bucket privado, só reservas, só WebP, só até 1 MiB', () =
     assert.ok(error, 'devia ter sido recusado')
   })
 
-  it('não confirma sem o ficheiro carregado (upload_not_found)', async () => {
-    const { error } = await ana.from('property_images').update({ status: 'ready' }).eq('id', imageId)
-    assert.equal(error?.code, '55000')
-  })
-
-  it('carrega o ficheiro reservado e confirma', async () => {
+  it('carrega o ficheiro reservado', async () => {
     const upload = await ana.storage.from(BUCKET).upload(path, WEBP, { contentType: 'image/webp' })
     assert.equal(upload.error, null, `upload: ${upload.error?.message}`)
+  })
+
+  it('o cliente da API não confirma diretamente (só a Edge Function, ver photo-functions.test.ts)', async () => {
     const { error } = await ana.from('property_images').update({ status: 'ready' }).eq('id', imageId)
-    assert.equal(error, null, `confirmar: ${error?.message}`)
+    assert.equal(error?.code, '42501')
   })
 
   it('o URL público do bucket privado não serve o ficheiro', async () => {

@@ -64,5 +64,16 @@ otp_expiry = 600
 [edge_runtime]
 enabled = true
 
+# O JWT é validado no código (auth.getUser), que funciona com chaves simétricas e assimétricas.
+# reconcile-property-images não usa JWT: autentica-se com um segredo dedicado (x-reconcile-secret).
+[functions.confirm-property-image]
+verify_jwt = false
+
+[functions.delete-property-image]
+verify_jwt = false
+
+[functions.reconcile-property-images]
+verify_jwt = false
+
 [analytics]
 enabled = false

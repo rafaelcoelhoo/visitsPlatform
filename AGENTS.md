@@ -8,7 +8,8 @@
 - `pnpm db:start` / `pnpm db:stop`
 - `pnpm db:reset`: aplica as migrações e o seed na base local
 - `pnpm db:test`: pgTAP; tem de passar antes de qualquer commit que toque em `supabase/`
-- `pnpm test:integration`: concorrência e Storage por HTTP (precisa de `pnpm db:start`; só contra o Supabase local)
+- `pnpm functions:serve`: Edge Functions locais (num terminal à parte)
+- `pnpm test:integration`: concorrência, Storage e Edge Functions por HTTP (precisa de `pnpm db:start` e `pnpm functions:serve`; só contra o Supabase local)
 - `pnpm db:lint`
 
 ## Regras
@@ -24,6 +25,7 @@
 - Dados em falta são `NULL`, nunca `0` nem `''`.
 - `role`/`status` em `text` com check, não enum.
 - Nenhum requisito de segurança é dado como concluído sem um teste que o prove.
+- Edge Functions: a lógica vive em `supabase/functions/_shared` (pura, tipada, com testes); os `index.ts` só ligam ao Supabase. Segredos nunca em código; logs sem dados pessoais.
 - Não acrescentar dependências sem justificação. Versões fixas (`-E`), publicadas há pelo menos 7 dias. React fica na 18 (o `react-router` fica na 7; a 8 exige React 19), TypeScript na 6 e ESLint na 9 (limites de `typescript-eslint` e `eslint-plugin-jsx-a11y`).
 - Frontend: camadas `components → api → domain`; `domain/` é TypeScript puro. Textos só em `src/i18n/pt-PT.ts`, nunca literais em JSX. `import.meta.env` só passa por `src/config/env.ts`.
 - Nunca `VITE_*` com segredos. O código recusa qualquer variável `VITE_*service_role*`.

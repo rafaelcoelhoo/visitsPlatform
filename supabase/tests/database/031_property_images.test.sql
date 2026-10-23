@@ -71,8 +71,15 @@ select throws_ok($$ update public.property_images set slot = 8 where slot = 1 $$
 select throws_ok($$ delete from public.property_images $$, '42501', null, 'sem DELETE direto (Edge Function limpa linha e ficheiro)');
 reset role;
 
--- Confirmar: só com ficheiro real, WebP ---------------------------------------------
+-- Confirmar: o cliente da API não pode; o service_role só com ficheiro real, WebP --------------
 select tests.authenticate_as('a6000000-0000-0000-0000-000000000001');
+select throws_ok($$
+  update public.property_images set status = 'ready'
+  where property_id = '26000000-0000-4000-8000-0000000000a1' and slot = 3
+$$, '42501', null, 'o cliente da API não confirma fotos (só a Edge Function, depois de validar os magic bytes)');
+reset role;
+
+set local role service_role;
 select throws_ok($$
   update public.property_images set status = 'ready'
   where property_id = '26000000-0000-4000-8000-0000000000a1' and slot = 3
@@ -86,7 +93,7 @@ insert into storage.objects (bucket_id, name, metadata)
 select 'property-images', storage_path, '{"mimetype":"image/webp","size":1000}'::jsonb
 from public.property_images where property_id = '26000000-0000-4000-8000-0000000000a1' and slot = 3;
 
-select tests.authenticate_as('a6000000-0000-0000-0000-000000000001');
+set local role service_role;
 select throws_ok($$
   update public.property_images set status = 'ready'
   where property_id = '26000000-0000-4000-8000-0000000000a1' and slot = 4
@@ -95,17 +102,11 @@ select lives_ok($$
   update public.property_images set status = 'ready'
   where property_id = '26000000-0000-4000-8000-0000000000a1' and slot = 3
 $$, 'confirma depois de o ficheiro WebP existir');
-update public.property_images set status = 'pending'
-where property_id = '26000000-0000-4000-8000-0000000000a1' and slot = 3;
 select throws_ok($$
   update public.property_images set status = 'pending'
-  where property_id = '26000000-0000-4000-8000-0000000000a1' and slot = 5
-$$, '42501', null, 'só se pode mudar para ready (WITH CHECK)');
+  where property_id = '26000000-0000-4000-8000-0000000000a1' and slot = 3
+$$, '55000', 'status_regression', 'uma foto ready nunca regride a pending');
 reset role;
-
-select results_eq($$
-  select status from public.property_images where property_id = '26000000-0000-4000-8000-0000000000a1' and slot = 3
-$$, $$ values ('ready'::text) $$, 'uma foto ready não volta a pending');
 
 -- Reutilização de slots libertados ---------------------------------------------------
 delete from public.property_images where property_id = '26000000-0000-4000-8000-0000000000a1' and slot = 2;
